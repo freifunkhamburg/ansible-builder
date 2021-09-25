@@ -1,0 +1,238 @@
+---
+
+- name: builder2
+  hosts: builder2
+  tasks:
+    - name: Common system setup
+      block:
+        - name: Update apt cache
+          apt:
+            update_cache: yes
+
+        - name: Install debconf
+          package:
+            name:
+              - debconf
+              - debconf-utils
+            state: present
+
+        - name: Preseed some configuration
+          with_items:
+            - name: unattended-upgrades
+              question: unattended-upgrades/enable_auto_updates
+              value: "true"
+              vtype: boolean
+          debconf:
+            name: "{{ item.name }}"
+            question: "{{ item.question }}"
+            value: "{{ item.value }}"
+            vtype: "{{ item.vtype }}"
+
+        - name: Install default packages
+          package:
+            name:
+              - htop
+              - screen
+              - unattended-upgrades
+            state: present
+
+        - name: Remove os-prober
+          package:
+            name: os-prober
+            state: absent
+
+        - name: Configure screen
+          copy:
+            dest: /etc/screenrc
+            backup: yes
+            owner: root
+            group: root
+            mode: "0644"
+            content: |
+              hardstatus alwayslastline
+              hardstatus string '%{= kG}[ %{G}%H %{g}][%= %{= kw}%?%-Lw%?%{r}(%{W}%n*%f%t%?(%u)%?%{r})%{w}%?%+Lw%?%?%= %{g}][%{B} %m-%d %{W}%c:%s %{g}]'
+              defscrollback 99999
+
+
+    - name: Install ZFS
+      block:
+        - name: Prepare for ZFS installation
+          blockinfile:
+            backup: yes
+            create: yes
+            path: /etc/apt/sources.d/backports.list
+            marker: "# {mark} backports archive"
+            mode: "0644"
+            owner: root
+            group: root
+            block: |
+              deb http://deb.debian.org/debian {{ ansible_distribution_release }}-backports main contrib non-free
+
+        - name: Update apt cache
+          apt:
+            update_cache: yes
+
+        - name: Install ZFS packages
+          register: zfs_packages
+          package:
+            name:
+              - linux-headers-amd64
+              - zfsutils-linux
+              - zfs-dkms
+              - zfs-zed
+
+        - name: Reboot after ZFS install
+          when: zfs_packages.changed
+          reboot:
+
+    - name: zpool initialization
+      block:
+        - name: try to import zpool
+          register: try_import_zpool
+          failed_when: false
+          changed_when: try_import_zpool.rc == 0
+          command:
+            cmd: zpool import build
+
+        - name: Check if zpool is imported
+          register: zpool_import_status
+          failed_when: false
+          changed_when: false
+          check_mode: false
+          command:
+            cmd: zpool list build
+
+        - name: Create zpool if not imported
+          when: (zpool_import_status.rc > 0)
+          command:
+            cmd: zpool create -o ashift=12 -o autotrim=on -O mountpoint=legacy -O dedup=on -O compression=on build /dev/disk/by-id/scsi-0HC_Volume_13728974
+
+    - name: Create zfs datasets
+      with_items:
+        - dataset: build
+          properties:
+            org.debian:periodic-trim: enable
+        - dataset: build/build
+          properties:
+            mountpoint: /build
+            com.sun:auto-snapshot: false
+        - dataset: build/firmware
+          properties:
+            mountpoint: /firmware
+            com.sun:auto-snapshot: true
+            com.sun:auto-snapshot:frequent: false
+            com.sun:auto-snapshot:hourly: false
+            com.sun:auto-snapshot:weekly: false
+            com.sun:auto-snapshot:monthly: false
+        - dataset: build/mirror
+          properties:
+            mountpoint: /mirror
+            com.sun:auto-snapshot: true
+            com.sun:auto-snapshot:frequent: false
+            com.sun:auto-snapshot:hourly: false
+            com.sun:auto-snapshot:weekly: false
+            com.sun:auto-snapshot:monthly: false
+      zfs:
+        state: present
+        name: "{{ item.dataset }}"
+        extra_zfs_properties: "{{ item.properties }}"
+
+
+    - name: Install software required to build gluon
+      package:
+        state: present
+        name:
+          - build-essential
+          - gawk
+          - git
+          - libncurses-dev
+          - libssl-dev
+          - libz-dev
+          - python2
+          - python3
+          - qemu-utils
+          - subversion
+          - time
+          - unzip
+          - wget
+
+    - name: Create build user
+      user:
+        name: gluon
+        state: present
+        password: "!"
+        shell: /bin/bash
+
+    - name: Set permissions on directories
+      with_items:
+        - /build
+        - /firmware
+        - /mirror
+      file:
+        path: "{{ item }}"
+        owner: gluon
+        mode: "0755"
+
+    - name: Create symlinks in gluon home
+      with_items:
+        - /build
+        - /firmware
+        - /mirror
+      file:
+        path: "/home/gluon/{{ item | basename }}"
+        src: "{{ item }}"
+        state: link
+
+
+    - name: Configure webserver for builder2
+      block:
+        - name: Install nginx
+          package:
+            name:
+              - nginx-light
+              - libnginx-mod-http-fancyindex
+              - certbot
+              - python3-certbot-nginx
+            state: present
+
+        - name: Nginx default config
+          template:
+            dest: /etc/nginx/sites-available/default
+            src: nginx.default
+            backup: yes
+            force: yes
+            mode: "0400"
+            owner: root
+            group: root
+
+        - name: Check for certbot certificates
+          register: certbot_status
+          stat:
+            path: /etc/letsencrypt/live
+
+        - name: Initialize certificates
+          when: not certbot_status.stat.exists
+          block:
+            - name: Ensure nginx is stopped
+              service:
+                name: nginx
+                state: stopped
+
+            - name: Initialize certbot certificates standalone
+              command:
+                cmd: certbot -n --agree-tos --email certbot-test@danielfrank.net certonly --domains builder2.besaid.de --standalone
+
+        - name: Setup cronjob for certbot
+          cron:
+            name: certbot auto renewal
+            job: certbot renew --webroot --post-hook 'systemctl start nginx' --disable-renew-updates
+            minute: "7"
+            hour: "1"
+            day: "*"
+            month: "*"
+            weekday: "*"
+
+        - name: Ensure nginx is running
+          service:
+            name: nginx
+            state: started

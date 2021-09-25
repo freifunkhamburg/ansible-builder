@@ -1,0 +1,22 @@
+server {
+        listen 80 default_server;
+        listen [::]:80 default_server;
+
+        listen 443 ssl default_server;
+        listen [::]:443 ssl default_server;
+
+        server_name builder2.besaid.de;
+
+        ssl_certificate     /etc/letsencrypt/live/builder2.besaid.de/fullchain.pem;
+        ssl_certificate_key /etc/letsencrypt/live/builder2.besaid.de/privkey.pem;
+
+        root /firmware;
+
+        location ~* \.manifest$ { types { } default_type "text/plain; charset=utf-8"; }
+
+        location / {
+                try_files $uri $uri/ =404;
+                fancyindex on;
+                fancyindex_name_length 120;
+        }
+}
