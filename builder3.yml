@@ -1,7 +1,7 @@
 ---
 
-- name: builder2
-  hosts: builder2
+- name: builder3
+  hosts: builder3.hamburg.freifunk.net
   tasks:
     - name: Common system setup
       block:
@@ -81,6 +81,12 @@
               - zfs-dkms
               - zfs-zed
 
+        - name: Ensure zfs modules are loaded on boot
+          lineinfile:
+            path: /etc/modules
+            line: zfs
+            regexp: zfs
+
         - name: Reboot after ZFS install
           when: zfs_packages.changed
           reboot:
@@ -92,7 +98,7 @@
           failed_when: false
           changed_when: try_import_zpool.rc == 0
           command:
-            cmd: zpool import build
+            cmd: zpool import dpool
 
         - name: Check if zpool is imported
           register: zpool_import_status
@@ -100,23 +106,23 @@
           changed_when: false
           check_mode: false
           command:
-            cmd: zpool list build
+            cmd: zpool list dpool
 
         - name: Create zpool if not imported
           when: (zpool_import_status.rc > 0)
           command:
-            cmd: zpool create -o ashift=12 -o autotrim=on -O mountpoint=legacy -O dedup=on -O compression=on build /dev/disk/by-id/scsi-0HC_Volume_13728974
+            cmd: zpool create -o ashift=12 -o autotrim=on -O mountpoint=legacy -O dedup=on -O compression=on dpool mirror /dev/sda4 /dev/sdb4
 
     - name: Create zfs datasets
       with_items:
-        - dataset: build
+        - dataset: dpool
           properties:
             org.debian:periodic-trim: enable
-        - dataset: build/build
+        - dataset: dpool/build
           properties:
             mountpoint: /build
             com.sun:auto-snapshot: false
-        - dataset: build/firmware
+        - dataset: dpool/firmware
           properties:
             mountpoint: /firmware
             com.sun:auto-snapshot: true
@@ -124,7 +130,7 @@
             com.sun:auto-snapshot:hourly: false
             com.sun:auto-snapshot:weekly: false
             com.sun:auto-snapshot:monthly: false
-        - dataset: build/mirror
+        - dataset: dpool/mirror
           properties:
             mountpoint: /mirror
             com.sun:auto-snapshot: true
@@ -184,7 +190,7 @@
         state: link
 
 
-    - name: Configure webserver for builder2
+    - name: Configure webserver for builder3
       block:
         - name: Install nginx
           package:
@@ -220,7 +226,7 @@
 
             - name: Initialize certbot certificates standalone
               command:
-                cmd: certbot -n --agree-tos --email certbot-test@danielfrank.net certonly --domains builder2.besaid.de --standalone
+                cmd: certbot -n --agree-tos --email certbot-test@danielfrank.net certonly --domains builder3.hamburg.freifunk.net --standalone
 
         - name: Setup cronjob for certbot
           cron:

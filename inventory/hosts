@@ -1,2 +1,2 @@
 [ffhh]
-builder2 ansible_host=builder2.besaid.de
+builder3.hamburg.freifunk.net ansible_host=2a01:4f8:251:2f82::2

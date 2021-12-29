@@ -5,10 +5,10 @@ server {
         listen 443 ssl default_server;
         listen [::]:443 ssl default_server;
 
-        server_name builder2.besaid.de;
+        server_name builder3.hamburg.freifunk.net;
 
-        ssl_certificate     /etc/letsencrypt/live/builder2.besaid.de/fullchain.pem;
-        ssl_certificate_key /etc/letsencrypt/live/builder2.besaid.de/privkey.pem;
+        ssl_certificate     /etc/letsencrypt/live/builder3.hamburg.freifunk.net/fullchain.pem;
+        ssl_certificate_key /etc/letsencrypt/live/builder3.hamburg.freifunk.net/privkey.pem;
 
         root /firmware;
 
