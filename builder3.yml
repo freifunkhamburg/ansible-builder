@@ -270,3 +270,14 @@
           service:
             name: nginx
             state: started
+
+        - name: Automatically build a new gluon master
+          cron:
+            name: gluon-master-build
+            user: gluon
+            job: /home/gluon/bin/master-build.sh
+            minute: "17"
+            hour: "0"
+            day: "*"
+            month: "*"
+            weekday: "1"
