@@ -198,6 +198,25 @@
         src: "{{ item }}"
         state: link
 
+    - name: Checkout scripts for the builder
+      git:
+        repo: https://github.com/freifunkhamburg/builder-scripts.git
+        dest: /home/gluon/bin
+        ssh_opts: -o StrictHostKeyChecking=accept-new
+
+    - name: Fix permissions on git repo
+      file:
+        path: /home/gluon/bin
+        owner: gluon
+        group: gluon
+        recurse: yes
+
+    - name: Set main as default git branch name
+      git_config:
+        scope: system
+        state: present
+        name: init.defaultBranch
+        value: main
 
     - name: Configure webserver for builder3
       block:
