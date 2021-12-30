@@ -38,6 +38,7 @@
           package:
             name:
               - htop
+              - mc
               - mosh
               - screen
               - smartmontools
