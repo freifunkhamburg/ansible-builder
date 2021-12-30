@@ -5,9 +5,15 @@
   tasks:
     - name: Common system setup
       block:
-        - name: Update apt cache
+        - name: Update all packages: dist-upgrade
+          register: system_update
           apt:
             update_cache: yes
+            upgrade: dist
+
+        - name: Reboot after system upgrade, when changed
+          when: system_update.changed
+          reboot:
 
         - name: Install debconf
           package:
