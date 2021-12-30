@@ -32,7 +32,9 @@
           package:
             name:
               - htop
+              - mosh
               - screen
+              - smartmontools
               - unattended-upgrades
             state: present
 
